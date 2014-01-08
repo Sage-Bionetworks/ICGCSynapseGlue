@@ -155,9 +155,13 @@ public class ICGCSynapseGlue {
 	      usersToAddInGoogle.removeAll(getGroupMembers(googleGroupName, "MANAGER", oauthToken).keySet());
 	      System.out.println("Emails we need to add in Google ("+usersToAddInGoogle.size()+"):\n"+usersToAddInGoogle);	
 	      
+	      int usersAddedToGoogleGroup = 0;
 	      // add these to the Google group
 	      for (String email : usersToAddInGoogle) {
-	    	  if (execute) addGroupMember(googleGroupName, email, "MEMBER", oauthToken);
+	    	  if (execute) {
+	    		  boolean success = addGroupMember(googleGroupName, email, "MEMBER", oauthToken);
+	    		  if (success) usersAddedToGoogleGroup++;
+	    	  }
 	      }
 	        
 	      // to figure out who to remove, start with those who are in the Google Group (skipping any owners or managers)...
@@ -173,9 +177,9 @@ public class ICGCSynapseGlue {
 	     		if (execute) removeGroupMember(googleGroupName, memberKey, oauthToken);
 	      }
 	      
-		  if (execute && (usersToAdd.size()>0 || removeCount>0 || usersToAddInGoogle.size()>0 || usersToRemoveFromGoogle.size()>0)) {
+		  if (execute && (usersToAdd.size()>0 || removeCount>0 || usersAddedToGoogleGroup>0 || usersToRemoveFromGoogle.size()>0)) {
 			  String messageBody = "Added "+usersToAdd.size()+" and removed "+removeCount+" users from Team "+approveTeamId+"\n";
-			  messageBody += "Added "+usersToAddInGoogle.size()+" and removed "+usersToRemoveFromGoogle.size()+" from "+googleGroupName;
+			  messageBody += "Added "+usersAddedToGoogleGroup+" and removed "+usersToRemoveFromGoogle.size()+" from "+googleGroupName;
 			  MessageToUser message = new MessageToUser();
 			  message.setSubject("GMC Challenge approval");
 			  message.setRecipients(new HashSet<String>(Arrays.asList(new String[]{myOwnUserId})));
@@ -366,7 +370,9 @@ public class ICGCSynapseGlue {
      * Uses the client ID, secret and a refresh token, stored as properties, to get an OAuth 2.0 access token
      * The refresh token must be generated for a suitably enabled project/application under the Google Apps account
      * to be accessed and the refresh token must be generated using the scope https://www.googleapis.com/auth/admin.directory.group
-     * as per the Directory API.
+     * as per the Directory API.  To generate the refresh token use the oauth2.py utility:
+     * http://code.google.com/p/google-mail-oauth2-tools/wiki/OAuth2DotPyRunThrough
+     * python oauth2.py --client_id=<<clientid>> --client_secret=<<clientSecret>> --generate_oauth2_token --scope=https://www.googleapis.com/auth/admin.directory.group
      * 
      * @return an access token to authenticate/authorize requests to the Google API
      * @throws HttpException
@@ -425,11 +431,11 @@ public class ICGCSynapseGlue {
        * @param email the email address of the member to add NOT URL encoded
        * @param role one of MEMBER, MANAGER, OWNER
        * @param oauthToken the token returned by getOAuthAccessToken()
-       * @return the HTTP response code
+       * @return true if and only if successful
        * @throws HttpException
        * @throws IOException
        */
-      private static void addGroupMember(String groupName, String email, String role, String oauthToken) throws HttpException, IOException {
+      private static boolean addGroupMember(String groupName, String email, String role, String oauthToken) throws HttpException, IOException {
     	  HttpClient client = new HttpClient();
     	  String url = "https://www.googleapis.com/admin/directory/v1/groups/"+groupName+"/members";
     	  PostMethod method = new PostMethod(url);
@@ -447,9 +453,11 @@ public class ICGCSynapseGlue {
     			  "Response: "+method.getResponseBodyAsString();
     	  if (rc==409) {
     		  System.out.println(webDump);
+    		  return false;
     	  } else if (rc!=200 && rc!=201) {
       	  	throw new RuntimeException(webDump);
     	  }
+    	  return true;
       }
       
       /**
